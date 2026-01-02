@@ -21,7 +21,7 @@ jobs:
         echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
         echo "Latest release tag: $TAG_NAME"
         
-        VERSION=$(echo "$TAG_NAME" | sed 's/^v//')
+        VERSION=$(echo "$TAG_NAME" | sed 's/^[Vv]//')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Version: $VERSION"
     
