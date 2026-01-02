@@ -42,6 +42,7 @@ jobs:
     - name: Process files
       run: |
         cd downloads
+        VERSION=${{ steps.get-release.outputs.version }}
         
         # Process each architecture
         for arch in x86 x64 arm64ec; do
@@ -53,12 +54,24 @@ jobs:
           # Unzip the original file
           unzip "$arch.zip" -d "$arch-work/"
           
-          # Copy config files to the extracted directory
-          cp ../config.ini "$arch-work/"
-          cp ../global_cfg.ini "$arch-work/"
+          # Check if TrafficMonitor folder exists
+          TM_FOLDER="$arch-work/TrafficMonitor"
           
-          echo "Files in $arch-work after adding configs:"
-          ls -la "$arch-work/"
+          if [ ! -d "$TM_FOLDER" ]; then
+            echo "Error: TrafficMonitor folder not found in $arch-work"
+            echo "Available contents:"
+            ls -la "$arch-work/"
+            exit 1
+          fi
+          
+          echo "Found TrafficMonitor folder: $TM_FOLDER"
+          
+          # Copy config files to the TrafficMonitor folder
+          cp ../config.ini "$TM_FOLDER/"
+          cp ../global_cfg.ini "$TM_FOLDER/"
+          
+          echo "Files in TrafficMonitor folder after adding configs:"
+          ls -la "$TM_FOLDER/"
         done
     
     - name: Create release packages
