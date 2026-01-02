@@ -1,0 +1,125 @@
+name: Monitor Release
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch: 
+jobs:
+  process-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      
+    - name: Get latest TrafficMonitor release
+      id: get-release
+      run: |
+        # Get the latest release info from the source repository
+        RELEASE_INFO=$(curl -s "https://api.github.com/repos/zhongyang219/TrafficMonitor/releases/latest")
+        TAG_NAME=$(echo "$RELEASE_INFO" | jq -r '.tag_name')
+        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "Latest release tag: $TAG_NAME"
+        
+        VERSION=$(echo "$TAG_NAME" | sed 's/^v//')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+    
+    - name: Download release files
+      run: |
+        VERSION=${{ steps.get-release.outputs.version }}
+        mkdir -p downloads
+        cd downloads
+        
+        # Download the three architecture files
+        wget "https://github.com/zhongyang219/TrafficMonitor/releases/download/V${VERSION}/TrafficMonitor_V${VERSION}_x86.zip" -O x86.zip
+        wget "https://github.com/zhongyang219/TrafficMonitor/releases/download/V${VERSION}/TrafficMonitor_V${VERSION}_x64.zip" -O x64.zip
+        wget "https://github.com/zhongyang219/TrafficMonitor/releases/download/V${VERSION}/TrafficMonitor_V${VERSION}_arm64ec.zip" -O arm64ec.zip
+        
+        echo "Downloaded files:"
+        ls -la
+    
+    - name: Process files
+      run: |
+        cd downloads
+        
+        # Process each architecture
+        for arch in x86 x64 arm64ec; do
+          echo "Processing $arch..."
+          
+          # Create working directory
+          mkdir -p "$arch-work"
+          
+          # Unzip the original file
+          unzip "$arch.zip" -d "$arch-work/"
+          
+          # Copy config files to the extracted directory
+          cp ../config.ini "$arch-work/"
+          cp ../global_cfg.ini "$arch-work/"
+          
+          echo "Files in $arch-work after adding configs:"
+          ls -la "$arch-work/"
+        done
+    
+    - name: Create release packages
+      run: |
+        cd downloads
+        mkdir -p releases
+        
+        # Create final zip files with renamed architecture names
+        cd x86-work
+        zip -r "../releases/ia32.zip" .
+        cd ..
+        
+        cd x64-work
+        zip -r "../releases/x64.zip" .
+        cd ..
+        
+        cd arm64ec-work
+        zip -r "../releases/arm64.zip" .
+        cd ..
+        
+        echo "Created release packages:"
+        ls -la releases/
+    
+    - name: Delete existing release if exists
+      continue-on-error: true
+      run: |
+        # Try to delete existing release with tag 'monitor'
+        gh release delete monitor --yes || echo "No existing release to delete"
+        # Delete the tag as well
+        git push --delete origin monitor || echo "No existing tag to delete"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create release
+      run: |
+        VERSION=${{ steps.get-release.outputs.version }}
+        
+        # Create release with tag 'monitor'
+        gh release create monitor \
+          --title "TrafficMonitor Auto-configured v${VERSION}" \
+          --notes "Auto-configured TrafficMonitor v${VERSION} with custom config.ini and global_cfg.ini
+
+        **Original Release:** https://github.com/zhongyang219/TrafficMonitor/releases/tag/V${VERSION}
+        
+        **Architectures:**
+        - ia32.zip (x86 architecture)
+        - x64.zip (x64 architecture) 
+        - arm64.zip (arm64ec architecture)
+        
+        **Auto-generated on:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+        
+        Each package includes the pre-configured config.ini and global_cfg.ini files." \
+          downloads/releases/ia32.zip \
+          downloads/releases/x64.zip \
+          downloads/releases/arm64.zip
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Summary
+      run: |
+        echo "✅ Successfully processed and released TrafficMonitor v${{ steps.get-release.outputs.version }}"
+        echo "📦 Release created with tag: monitor"
+        echo "🏗️ Architectures: ia32.zip, x64.zip, arm64.zip"
+        echo "📋 Config files added: config.ini, global_cfg.ini"
